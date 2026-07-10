@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
-import type { AuthResponse, UserRole } from '@teamops/shared';
+import type { AuthResponse, RegisterResponse, UserRole } from '@teamops/shared';
 import { prisma } from '../lib/prisma.js';
 import { toUserDto } from '../lib/mappers.js';
 import { requireAuth, signToken } from '../middleware/auth.js';
@@ -11,7 +11,45 @@ const loginSchema = z.object({
   password: z.string().min(6)
 });
 
+const registerSchema = z.object({
+  name: z.string().min(2),
+  email: z.string().email(),
+  password: z.string().min(8)
+});
+
 export const authRouter = Router();
+
+authRouter.post('/register', async (req, res) => {
+  const parsed = registerSchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    res.status(400).json({ message: 'Invalid registration payload' });
+    return;
+  }
+
+  const existing = await prisma.user.findUnique({ where: { email: parsed.data.email } });
+  if (existing) {
+    res.status(409).json({ message: 'Email already exists' });
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(parsed.data.password, 10);
+  const user = await prisma.user.create({
+    data: {
+      name: parsed.data.name,
+      email: parsed.data.email,
+      passwordHash,
+      role: 'MEMBER',
+      title: '团队成员',
+      avatarColor: '#2563eb',
+      active: true
+    }
+  });
+  await prisma.activityLog.create({ data: { actorId: user.id, message: `Registered user ${user.email}` } });
+
+  const response: RegisterResponse = { user: toUserDto(user) };
+  res.status(201).json(response);
+});
 
 authRouter.post('/login', async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);

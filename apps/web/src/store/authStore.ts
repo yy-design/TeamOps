@@ -34,7 +34,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   setSession: (token, user) => {
     getStorage()?.setItem(tokenKey, token);
     getStorage()?.setItem(userKey, JSON.stringify(user));
-    set({ token, user });
+    set({ token, user });//写入了Zustand内存状态
   },
   clearSession: () => {
     getStorage()?.removeItem(tokenKey);

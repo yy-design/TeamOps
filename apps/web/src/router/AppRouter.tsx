@@ -3,6 +3,7 @@ import { AppShell } from '../components/AppShell';
 import { useAuthStore } from '../store/authStore';
 import { DashboardPage } from '../pages/DashboardPage';
 import { LoginPage } from '../pages/LoginPage';
+import { RegisterPage } from '../pages/RegisterPage';
 import { ProjectsPage } from '../pages/ProjectsPage';
 import { TasksPage } from '../pages/TasksPage';
 import { UsersPage } from '../pages/UsersPage';
@@ -19,6 +20,7 @@ export function AppRouter() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
         <Route element={<ProtectedRoute />}>
           <Route element={<AppShell />}>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />

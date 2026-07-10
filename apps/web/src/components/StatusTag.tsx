@@ -1,5 +1,6 @@
 import { Tag } from 'antd';
 import type { ProjectStatus, TaskPriority, TaskStatus, UserRole } from '@teamops/shared';
+import { TagProps } from 'antd/lib';
 
 const colors: Record<string, string> = {
   ADMIN: 'blue',
@@ -20,5 +21,5 @@ const colors: Record<string, string> = {
 };
 
 export function StatusTag({ value }: { value: ProjectStatus | TaskStatus | TaskPriority | UserRole }) {
-  return <Tag color={colors[value]}>{value.replaceAll('_', ' ')}</Tag>;
+  return <Tag color={colors[value]} style={{ width: 120 }}>{value.replaceAll('_', ' ')}</Tag>;
 }

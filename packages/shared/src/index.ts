@@ -71,6 +71,16 @@ export interface AuthResponse {
   user: UserDto;
 }
 
+export interface RegisterPayload {
+  name: string;
+  email: string;
+  password: string;
+}
+
+export interface RegisterResponse {
+  user: UserDto;
+}
+
 export interface ApiErrorResponse {
   message: string;
 }
