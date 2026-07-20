@@ -7,24 +7,32 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TaskDto, TaskPriority, TaskStatus } from '@teamops/shared';
 import { PageHeader } from '../components/PageHeader';
 import { StatusTag } from '../components/StatusTag';
+import { TableFilterPanel } from '../components/TableFilterPanel';
 import { teamOpsApi } from '../services/api';
+import { useAuthStore } from '../store/authStore';
 
 const statusColumns: TaskStatus[] = ['BACKLOG', 'IN_PROGRESS', 'REVIEW', 'DONE', 'BLOCKED'];
 const priorities: TaskPriority[] = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
+type AppliedTaskFilters = { search?: string; status?: TaskStatus; projectId?: string; assigneeId?: string; priority?: TaskPriority };
 
 export function TasksPage() {
   const { message } = App.useApp();
   const [form] = Form.useForm();
+  const [filterForm] = Form.useForm();
   const [commentForm] = Form.useForm();
   const queryClient = useQueryClient();
-  const [filters, setFilters] = useState({ search: '', status: 'ALL' as TaskStatus | 'ALL', projectId: 'ALL', assigneeId: 'ALL' });
+  const user = useAuthStore((state) => state.user);
+  const isAdmin = user?.role === 'ADMIN';
+  const [filters, setFilters] = useState<AppliedTaskFilters>({});
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<TaskDto | null>(null);
   const [selected, setSelected] = useState<TaskDto | null>(null);
-  const queryFilters = useMemo(() => ({ search: filters.search || undefined, status: filters.status, projectId: filters.projectId, assigneeId: filters.assigneeId }), [filters]);
+  const queryFilters = useMemo(() => ({ search: filters.search?.trim() || undefined, status: filters.status, projectId: filters.projectId, assigneeId: filters.assigneeId }), [filters]);
   const { data = [], isLoading } = useQuery({ queryKey: ['tasks', queryFilters], queryFn: () => teamOpsApi.tasks(queryFilters) });
   const { data: projects = [] } = useQuery({ queryKey: ['projects'], queryFn: teamOpsApi.projects });
-  const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: teamOpsApi.users });
+  const { data: adminUsers = [] } = useQuery({ queryKey: ['users'], queryFn: teamOpsApi.users, enabled: isAdmin });
+  const users = isAdmin ? adminUsers : (user ? [user] : []);
+  const filteredData = useMemo(() => data.filter((task) => !filters.priority || task.priority === filters.priority), [data, filters.priority]);
   const statusMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: TaskStatus }) => teamOpsApi.updateTaskStatus(id, status),
     onSuccess: () => {
@@ -69,54 +77,57 @@ export function TasksPage() {
   function openEditor(task?: TaskDto) {
     setEditing(task ?? null);
     form.resetFields();
-    form.setFieldsValue(task ? { ...task, projectId: task.project.id, assigneeId: task.assignee.id, dueDate: dayjs(task.dueDate) } : { status: 'BACKLOG', priority: 'MEDIUM', dueDate: dayjs().add(7, 'day'), projectId: projects[0]?.id, assigneeId: users[0]?.id });
+    form.setFieldsValue(task ? { ...task, projectId: task.project.id, assigneeId: task.assignee.id, dueDate: dayjs(task.dueDate) } : { status: 'BACKLOG', priority: 'MEDIUM', dueDate: dayjs().add(7, 'day'), projectId: projects[0]?.id, assigneeId: isAdmin ? users[0]?.id : user?.id });
     setOpen(true);
   }
 
   const columns: ColumnsType<TaskDto> = [
-    { title: '任务', dataIndex: 'title', render: (_, row) => <div><Button type="link" className="table-link" onClick={() => setSelected(row)}>{row.title}</Button><br /><Typography.Text type="secondary">{row.project.key} · {row.description}</Typography.Text></div> },
-    { title: '状态', dataIndex: 'status', render: (value, row) => <Select value={value} onChange={(status) => statusMutation.mutate({ id: row.id, status })} options={statusColumns.map((status) => ({ value: status, label: status.replaceAll('_', ' ') }))} /> },
-    { title: '优先级', dataIndex: 'priority', render: (value) => <StatusTag value={value} /> },
-    { title: '负责人', dataIndex: ['assignee', 'name'], render: (_, row) => <Space><Avatar style={{ background: row.assignee.avatarColor }}>{row.assignee.name[0]}</Avatar>{row.assignee.name}</Space> },
-    { title: '截止日期', dataIndex: 'dueDate', render: (value) => new Date(value).toLocaleDateString() },
-    { title: '操作', render: (_, row) => <Space><Button icon={<EditOutlined />} onClick={() => openEditor(row)}>编辑</Button><Popconfirm title="删除任务？" onConfirm={() => deleteMutation.mutate(row.id)}><Button danger icon={<DeleteOutlined />}>删除</Button></Popconfirm></Space> }
+    { title: '任务', dataIndex: 'title', width: 340, render: (_, row) => <div className="table-primary-cell"><Button type="link" className="table-link" onClick={() => setSelected(row)}>{row.title}</Button><span>{row.project.key} · {row.description}</span></div> },
+    { title: '状态', dataIndex: 'status', width: 150, render: (value, row) => <Select className="table-status-select" value={value} onChange={(status) => statusMutation.mutate({ id: row.id, status })} options={statusColumns.map((status) => ({ value: status, label: <StatusTag value={status} /> }))} /> },
+    { title: '优先级', dataIndex: 'priority', width: 110, render: (value) => <StatusTag value={value} /> },
+    { title: '负责人', dataIndex: ['assignee', 'name'], width: 150, render: (_, row) => <Space><Avatar size={30} style={{ background: row.assignee.avatarColor }}>{row.assignee.name[0]}</Avatar><strong className="table-person-name">{row.assignee.name}</strong></Space> },
+    { title: '截止日期', dataIndex: 'dueDate', width: 130, render: (value) => <span className="table-date">{new Date(value).toLocaleDateString('zh-CN')}</span> },
+    { title: '操作', width: 150, fixed: 'right', render: (_, row) => <Space size={4}><Button type="text" icon={<EditOutlined />} onClick={() => openEditor(row)}>编辑</Button><Popconfirm title="删除任务？" onConfirm={() => deleteMutation.mutate(row.id)}><Button type="text" danger icon={<DeleteOutlined />}>删除</Button></Popconfirm></Space> }
   ];
 
+  const resetFilters = () => { filterForm.resetFields(); setFilters({}); };
+
   return (
-    <div className="page-stack">
-      <PageHeader title="任务中心" subtitle="列表和看板同时呈现，方便筛选、推进和复盘工单。" action={<Button type="primary" icon={<PlusOutlined />} onClick={() => openEditor()}>新建任务</Button>} />
-      <Card className="toolbar-card">
-        <Space wrap>
-          <Input.Search placeholder="搜索任务" value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} style={{ width: 260 }} />
-          <Select value={filters.status} onChange={(status) => setFilters((current) => ({ ...current, status }))} style={{ width: 180 }} options={[{ value: 'ALL', label: '全部状态' }, ...statusColumns.map((status) => ({ value: status, label: status.replaceAll('_', ' ') }))]} />
-          <Select value={filters.projectId} onChange={(projectId) => setFilters((current) => ({ ...current, projectId }))} style={{ width: 220 }} options={[{ value: 'ALL', label: '全部项目' }, ...projects.map((project) => ({ value: project.id, label: project.name }))]} />
-          <Select value={filters.assigneeId} onChange={(assigneeId) => setFilters((current) => ({ ...current, assigneeId }))} style={{ width: 180 }} options={[{ value: 'ALL', label: '全部负责人' }, ...users.map((item) => ({ value: item.id, label: item.name }))]} />
-        </Space>
-      </Card>
-      <Row gutter={[12, 12]}>
-        {statusColumns.map((status) => (
-          <Col xs={24} md={12} xl={status === 'BLOCKED' ? 24 : 6} key={status}>
-            <Card title={<StatusTag value={status} />} className="board-column">
-              {data.filter((task) => task.status === status).map((task) => (
-                <button className="task-card" key={task.id} onClick={() => setSelected(task)}>
-                  <strong>{task.title}</strong>
-                  <span>{task.project.key}</span>
-                  <StatusTag value={task.priority} />
-                </button>
-              ))}
-            </Card>
-          </Col>
-        ))}
-      </Row>
-      <Card title="任务列表">
-        <Table rowKey="id" loading={isLoading} columns={columns} dataSource={data} pagination={{ pageSize: 5 }} />
-      </Card>
-      <Modal title={editing ? '编辑任务' : '新建任务'} open={open} onCancel={() => setOpen(false)} onOk={() => form.submit()} confirmLoading={saveMutation.isPending} destroyOnClose>
+    <div className="page-stack management-page">
+      <PageHeader title="任务中心" subtitle="列表和看板同时呈现，方便筛选、推进和复盘工单。" action={projects.length ? <Button type="primary" icon={<PlusOutlined />} onClick={() => openEditor()}>新建任务</Button> : null} />
+      <TableFilterPanel form={filterForm} onFinish={setFilters} onReset={resetFilters}>
+        <Form.Item name="search" label="关键词"><Input allowClear placeholder="任务标题" /></Form.Item>
+        <Form.Item name="status" label="任务状态"><Select allowClear placeholder="全部状态" options={statusColumns.map((status) => ({ value: status, label: <StatusTag value={status} /> }))} /></Form.Item>
+        <Form.Item name="projectId" label="所属项目"><Select allowClear showSearch optionFilterProp="label" placeholder="全部项目" options={projects.map((project) => ({ value: project.id, label: project.name }))} /></Form.Item>
+        {isAdmin ? <Form.Item name="assigneeId" label="负责人"><Select allowClear showSearch optionFilterProp="label" placeholder="全部负责人" options={users.map((item) => ({ value: item.id, label: item.name }))} /></Form.Item> : null}
+        <Form.Item name="priority" label="优先级"><Select allowClear placeholder="全部优先级" options={priorities.map((priority) => ({ value: priority, label: <StatusTag value={priority} /> }))} /></Form.Item>
+      </TableFilterPanel>
+      <div className="task-board-section">
+        <div className="task-board-section__heading"><div><span>WORKFLOW</span><h3>任务看板</h3></div><small>按状态纵览工作流</small></div>
+        <Row gutter={[12, 12]}>
+          {statusColumns.map((status) => (
+            <Col xs={24} md={12} xl={status === 'BLOCKED' ? 24 : 6} key={status}>
+              <Card title={<Space><StatusTag value={status} /><small>{filteredData.filter((task) => task.status === status).length}</small></Space>} className="board-column">
+                {filteredData.filter((task) => task.status === status).map((task) => (
+                  <button className="task-card" key={task.id} onClick={() => setSelected(task)}>
+                    <strong>{task.title}</strong><span>{task.project.key}</span><StatusTag value={task.priority} />
+                  </button>
+                ))}
+              </Card>
+            </Col>
+          ))}
+        </Row>
+      </div>
+      <section className="data-table-card">
+        <div className="data-table-card__header"><div><span>ALL TASKS</span><h3>任务列表</h3></div><small>共 {filteredData.length} 个任务</small></div>
+        <Table rowKey="id" loading={isLoading} columns={columns} dataSource={filteredData} scroll={{ x: 1030 }} pagination={{ pageSize: 8, showSizeChanger: true, showTotal: (total) => `共 ${total} 条` }} />
+      </section>
+      <Modal className="entity-modal" title={editing ? '编辑任务' : '新建任务'} open={open} onCancel={() => setOpen(false)} onOk={() => form.submit()} confirmLoading={saveMutation.isPending} destroyOnClose>
         <Form form={form} layout="vertical" onFinish={(values) => saveMutation.mutate(values)}>
           <Form.Item name="title" label="任务标题" rules={[{ required: true, min: 3 }]}><Input /></Form.Item>
           <Form.Item name="description" label="任务描述" rules={[{ required: true, min: 8 }]}><Input.TextArea rows={3} /></Form.Item>
-          <Form.Item name="projectId" label="所属项目" rules={[{ required: true }]}><Select options={projects.map((project) => ({ value: project.id, label: `${project.key} · ${project.name}` }))} /></Form.Item>
-          <Form.Item name="assigneeId" label="负责人" rules={[{ required: true }]}><Select options={users.map((item) => ({ value: item.id, label: `${item.name} · ${item.role}` }))} /></Form.Item>
+          <Form.Item name="projectId" label="所属项目" rules={[{ required: true }]}><Select disabled={Boolean(editing) && !isAdmin} options={[...projects, ...(editing && !projects.some((project) => project.id === editing.project.id) ? [editing.project] : [])].map((project) => ({ value: project.id, label: `${project.key} · ${project.name}` }))} /></Form.Item>
+          {isAdmin ? <Form.Item name="assigneeId" label="负责人" rules={[{ required: true }]}><Select options={users.map((item) => ({ value: item.id, label: `${item.name} · ${item.role}` }))} /></Form.Item> : <Form.Item name="assigneeId" hidden><Input /></Form.Item>}
           <Form.Item name="status" label="状态" rules={[{ required: true }]}><Select options={statusColumns.map((status) => ({ value: status, label: status.replaceAll('_', ' ') }))} /></Form.Item>
           <Form.Item name="priority" label="优先级" rules={[{ required: true }]}><Select options={priorities.map((priority) => ({ value: priority, label: priority }))} /></Form.Item>
           <Form.Item name="dueDate" label="截止日期" rules={[{ required: true }]}><DatePicker style={{ width: '100%' }} /></Form.Item>

@@ -14,6 +14,14 @@ export function canManageUsers(role: UserRole) {
   return role === 'ADMIN';
 }
 
-export function canManageProjects(role: UserRole) {
-  return role === 'ADMIN' || role === 'MANAGER';
+export function canManageProjects(_role: UserRole) {
+  return true;
+}
+
+export function hasGlobalDataAccess(role: UserRole) {
+  return role === 'ADMIN';
+}
+
+export function canAccessOwnedResource(role: UserRole, userId: string, ownerId: string) {
+  return hasGlobalDataAccess(role) || userId === ownerId;
 }

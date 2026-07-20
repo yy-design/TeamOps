@@ -24,7 +24,7 @@ const updateUserSchema = z.object({
   active: z.boolean().optional()
 });
 
-usersRouter.get('/', requireAuth, async (_req, res) => {
+usersRouter.get('/', requireAuth, requireRole('ADMIN'), async (_req, res) => {
   const users = await prisma.user.findMany({ orderBy: { name: 'asc' } });
   res.json(users.map(toUserDto));
 });
@@ -60,4 +60,57 @@ usersRouter.patch('/:id/toggle-active', requireAuth, requireRole('ADMIN'), async
   const current = await prisma.user.findUniqueOrThrow({ where: { id } });
   const user = await prisma.user.update({ where: { id }, data: { active: !current.active } });
   res.json(toUserDto(user));
+});
+
+usersRouter.delete('/:id', requireAuth, requireRole('ADMIN'), async (req, res) => {
+  const id = String(req.params.id);
+  if (id === req.user!.id) {
+    res.status(400).json({ message: '不能删除当前登录账号' });
+    return;
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: {
+      email: true,
+      _count: {
+        select: {
+          ownedProjects: true,
+          assignedTasks: true,
+          reportedTasks: true,
+          comments: true
+        }
+      }
+    }
+  });
+  if (!user) {
+    res.status(404).json({ message: '用户不存在' });
+    return;
+  }
+
+  const businessRelations = {
+    ownedProjects: user._count.ownedProjects,
+    assignedTasks: user._count.assignedTasks,
+    reportedTasks: user._count.reportedTasks,
+    comments: user._count.comments
+  };
+  const hasBusinessData = Object.values(businessRelations).some((count) => count > 0);
+  if (hasBusinessData) {
+    const relationLabels = [
+      businessRelations.ownedProjects ? `${businessRelations.ownedProjects} 个负责项目` : null,
+      businessRelations.assignedTasks ? `${businessRelations.assignedTasks} 个负责任务` : null,
+      businessRelations.reportedTasks ? `${businessRelations.reportedTasks} 个创建任务` : null,
+      businessRelations.comments ? `${businessRelations.comments} 条评论` : null
+    ].filter(Boolean).join('、');
+    res.status(409).json({ message: `该用户仍有关联数据：${relationLabels}，请先转移数据或禁用账号` });
+    return;
+  }
+
+  await prisma.$transaction([
+    prisma.notification.deleteMany({ where: { userId: id } }),
+    prisma.activityLog.deleteMany({ where: { actorId: id } }),
+    prisma.user.delete({ where: { id } })
+  ]);
+  await prisma.activityLog.create({ data: { actorId: req.user!.id, message: `Deleted user ${user.email}` } });
+  res.status(204).send();
 });

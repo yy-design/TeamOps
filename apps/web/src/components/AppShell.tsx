@@ -1,9 +1,10 @@
 import { BellOutlined, DashboardOutlined, LogoutOutlined, ProjectOutlined, SettingOutlined, TeamOutlined, UnorderedListOutlined } from '@ant-design/icons';
 import { Avatar, Badge, Button, Layout, Menu, Space, Typography } from 'antd';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../store/authStore';
-import { teamOpsApi } from '../services/api';
+import { authApi, teamOpsApi } from '../services/api';
 
 const { Header, Content, Sider } = Layout;
 
@@ -11,9 +12,15 @@ export function AppShell() {
   const navigate = useNavigate();
   const location = useLocation();
   const user = useAuthStore((state) => state.user);
+  const setUser = useAuthStore((state) => state.setUser);
   const clearSession = useAuthStore((state) => state.clearSession);
+  const { data: currentUser } = useQuery({ queryKey: ['auth', 'me'], queryFn: authApi.me });
   const { data: notifications = [] } = useQuery({ queryKey: ['notifications'], queryFn: teamOpsApi.notifications });
   const unread = notifications.filter((item) => !item.read).length;
+
+  useEffect(() => {
+    if (currentUser) setUser(currentUser);
+  }, [currentUser, setUser]);
 
   const menuItems = [
     { key: '/dashboard', icon: <DashboardOutlined />, label: '工作台' },

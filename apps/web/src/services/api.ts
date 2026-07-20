@@ -29,6 +29,10 @@ export const authApi = {
     const { data } = await api.post<AuthResponse>('/auth/login', { email, password });
     return data;
   },
+  async me() {
+    const { data } = await api.get<UserDto>('/auth/me');
+    return data;
+  },
   async updateProfile(payload: Partial<Pick<UserDto, 'name' | 'title' | 'avatarColor'>>) {
     const { data } = await api.patch<UserDto>('/auth/me', payload);
     return data;
@@ -126,6 +130,9 @@ export const teamOpsApi = {
   async toggleUserActive(id: string) {
     const { data } = await api.patch<UserDto>(`/users/${id}/toggle-active`);
     return data;
+  },
+  async deleteUser(id: string) {
+    await api.delete(`/users/${id}`);
   },
   async notifications() {
     const { data } = await api.get<NotificationDto[]>('/notifications');

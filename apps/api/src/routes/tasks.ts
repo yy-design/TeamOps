@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { toTaskDto } from '../lib/mappers.js';
 import { requireAuth } from '../middleware/auth.js';
+import { hasGlobalDataAccess } from '../lib/permissions.js';
 
 const taskSchema = z.object({
   title: z.string().min(3),
@@ -28,11 +29,14 @@ export const tasksRouter = Router();
 
 tasksRouter.get('/', requireAuth, async (req, res) => {
   const { status, projectId, assigneeId, search } = req.query;
+  const isAdmin = hasGlobalDataAccess(req.user!.role);
   const tasks = await prisma.task.findMany({
     where: {
       status: typeof status === 'string' && status !== 'ALL' ? (status as never) : undefined,
       projectId: typeof projectId === 'string' && projectId !== 'ALL' ? projectId : undefined,
-      assigneeId: typeof assigneeId === 'string' && assigneeId !== 'ALL' ? assigneeId : undefined,
+      assigneeId: isAdmin
+        ? (typeof assigneeId === 'string' && assigneeId !== 'ALL' ? assigneeId : undefined)
+        : req.user!.id,
       title: typeof search === 'string' && search ? { contains: search } : undefined
     },
     include,
@@ -48,15 +52,25 @@ tasksRouter.post('/', requireAuth, async (req, res) => {
     return;
   }
 
+  const isAdmin = hasGlobalDataAccess(req.user!.role);
+  const project = await prisma.project.findFirst({
+    where: { id: parsed.data.projectId, ...(isAdmin ? {} : { ownerId: req.user!.id }) }
+  });
+  if (!project) {
+    res.status(403).json({ message: 'You cannot create a task in this project' });
+    return;
+  }
+
+  const assigneeId = isAdmin ? parsed.data.assigneeId : req.user!.id;
   const task = await prisma.task.create({
-    data: { ...parsed.data, dueDate: new Date(parsed.data.dueDate), reporterId: req.user!.id },
+    data: { ...parsed.data, assigneeId, dueDate: new Date(parsed.data.dueDate), reporterId: req.user!.id },
     include
   });
 
   await Promise.all([
     prisma.notification.create({
       data: {
-        userId: parsed.data.assigneeId,
+        userId: assigneeId,
         title: 'New task assigned',
         body: `${task.title} is ready for your attention.`
       }
@@ -74,7 +88,15 @@ tasksRouter.patch('/:id/status', requireAuth, async (req, res) => {
     return;
   }
 
-  const task = await prisma.task.update({ where: { id: String(req.params.id) }, data: parsed.data, include });
+  const id = String(req.params.id);
+  const isAdmin = hasGlobalDataAccess(req.user!.role);
+  const existing = await prisma.task.findFirst({ where: { id, ...(isAdmin ? {} : { assigneeId: req.user!.id }) } });
+  if (!existing) {
+    res.status(404).json({ message: 'Task not found' });
+    return;
+  }
+
+  const task = await prisma.task.update({ where: { id }, data: parsed.data, include });
   await prisma.activityLog.create({ data: { message: `Moved ${task.title} to ${task.status}`, actorId: req.user!.id } });
   const updated = await prisma.task.findUniqueOrThrow({ where: { id: task.id }, include });
   res.json(toTaskDto(updated));
@@ -87,9 +109,31 @@ tasksRouter.patch('/:id', requireAuth, async (req, res) => {
     return;
   }
 
+  const id = String(req.params.id);
+  const isAdmin = hasGlobalDataAccess(req.user!.role);
+  const existing = await prisma.task.findFirst({ where: { id, ...(isAdmin ? {} : { assigneeId: req.user!.id }) } });
+  if (!existing) {
+    res.status(404).json({ message: 'Task not found' });
+    return;
+  }
+
+  const { assigneeId, projectId, ...updates } = parsed.data;
+  if (!isAdmin && projectId && projectId !== existing.projectId) {
+    const project = await prisma.project.findFirst({ where: { id: projectId, ownerId: req.user!.id } });
+    if (!project) {
+      res.status(403).json({ message: 'You cannot move this task to that project' });
+      return;
+    }
+  }
+
   const task = await prisma.task.update({
-    where: { id: String(req.params.id) },
-    data: { ...parsed.data, dueDate: parsed.data.dueDate ? new Date(parsed.data.dueDate) : undefined },
+    where: { id },
+    data: {
+      ...updates,
+      projectId,
+      assigneeId: isAdmin ? assigneeId : req.user!.id,
+      dueDate: updates.dueDate ? new Date(updates.dueDate) : undefined
+    },
     include
   });
   await prisma.activityLog.create({ data: { message: `Updated task ${task.title}`, actorId: req.user!.id } });
@@ -98,7 +142,15 @@ tasksRouter.patch('/:id', requireAuth, async (req, res) => {
 });
 
 tasksRouter.delete('/:id', requireAuth, async (req, res) => {
-  const task = await prisma.task.delete({ where: { id: String(req.params.id) } });
+  const id = String(req.params.id);
+  const isAdmin = hasGlobalDataAccess(req.user!.role);
+  const existing = await prisma.task.findFirst({ where: { id, ...(isAdmin ? {} : { assigneeId: req.user!.id }) } });
+  if (!existing) {
+    res.status(404).json({ message: 'Task not found' });
+    return;
+  }
+
+  const task = await prisma.task.delete({ where: { id } });
   await prisma.activityLog.create({ data: { message: `Deleted task ${task.title}`, actorId: req.user!.id } });
   res.status(204).send();
 });
@@ -110,7 +162,16 @@ tasksRouter.post('/:id/comments', requireAuth, async (req, res) => {
     return;
   }
 
-  const task = await prisma.task.findUniqueOrThrow({ where: { id: String(req.params.id) }, include });
+  const isAdmin = hasGlobalDataAccess(req.user!.role);
+  const task = await prisma.task.findFirst({
+    where: { id: String(req.params.id), ...(isAdmin ? {} : { assigneeId: req.user!.id }) },
+    include
+  });
+  if (!task) {
+    res.status(404).json({ message: 'Task not found' });
+    return;
+  }
+
   await prisma.comment.create({ data: { taskId: task.id, authorId: req.user!.id, body: parsed.data.body } });
   await Promise.all([
     prisma.activityLog.create({ data: { message: `Commented on ${task.title}`, actorId: req.user!.id } }),

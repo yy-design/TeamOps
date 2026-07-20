@@ -14,9 +14,9 @@ describe('role permissions', () => {
     expect(canManageUsers('MEMBER')).toBe(false);
   });
 
-  it('allows admins and managers to manage projects', () => {
+  it('allows every authenticated role to manage projects in its own data scope', () => {
     expect(canManageProjects('ADMIN')).toBe(true);
     expect(canManageProjects('MANAGER')).toBe(true);
-    expect(canManageProjects('MEMBER')).toBe(false);
+    expect(canManageProjects('MEMBER')).toBe(true);
   });
 });

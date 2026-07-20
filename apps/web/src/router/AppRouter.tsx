@@ -15,6 +15,11 @@ function ProtectedRoute() {
   return token ? <Outlet /> : <Navigate to="/login" replace />;
 }
 
+function AdminRoute() {
+  const user = useAuthStore((state) => state.user);
+  return user?.role === 'ADMIN' ? <Outlet /> : <Navigate to="/dashboard" replace />;
+}
+
 export function AppRouter() {
   return (
     <BrowserRouter>
@@ -27,7 +32,9 @@ export function AppRouter() {
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/tasks" element={<TasksPage />} />
-            <Route path="/users" element={<UsersPage />} />
+            <Route element={<AdminRoute />}>
+              <Route path="/users" element={<UsersPage />} />
+            </Route>
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>

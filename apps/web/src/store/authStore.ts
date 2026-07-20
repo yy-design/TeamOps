@@ -5,6 +5,7 @@ interface AuthState {
   token: string | null;
   user: UserDto | null;
   setSession: (token: string, user: UserDto) => void;
+  setUser: (user: UserDto) => void;
   clearSession: () => void;
 }
 
@@ -35,6 +36,10 @@ export const useAuthStore = create<AuthState>((set) => ({
     getStorage()?.setItem(tokenKey, token);
     getStorage()?.setItem(userKey, JSON.stringify(user));
     set({ token, user });//写入了Zustand内存状态
+  },
+  setUser: (user) => {
+    getStorage()?.setItem(userKey, JSON.stringify(user));
+    set({ user });
   },
   clearSession: () => {
     getStorage()?.removeItem(tokenKey);
