@@ -103,14 +103,27 @@ export function TasksPage() {
         <Form.Item name="priority" label="优先级"><Select allowClear placeholder="全部优先级" options={priorities.map((priority) => ({ value: priority, label: <StatusTag value={priority} /> }))} /></Form.Item>
       </TableFilterPanel>
       <div className="task-board-section">
-        <div className="task-board-section__heading"><div><span>WORKFLOW</span><h3>任务看板</h3></div><small>按状态纵览工作流</small></div>
+        <div className="task-board-section__heading">
+          <div>
+            <span>WORKFLOW</span>
+            <h3>任务看板</h3>
+          </div>
+          <small>按状态纵览工作流</small>
+        </div>
         <Row gutter={[12, 12]}>
           {statusColumns.map((status) => (
             <Col xs={24} md={12} xl={status === 'BLOCKED' ? 24 : 6} key={status}>
-              <Card title={<Space><StatusTag value={status} /><small>{filteredData.filter((task) => task.status === status).length}</small></Space>} className="board-column">
+              <Card
+                title={<Space><StatusTag value={status} /><small>{filteredData.filter((task) => task.status === status).length}</small></Space>}
+                className={`board-column${status === 'BLOCKED' ? ' board-column--wide' : ''}`}
+              >
                 {filteredData.filter((task) => task.status === status).map((task) => (
                   <button className="task-card" key={task.id} onClick={() => setSelected(task)}>
-                    <strong>{task.title}</strong><span>{task.project.key}</span><StatusTag value={task.priority} />
+                    <strong>{task.title}</strong>
+                    <span className="task-card__meta">
+                      <span className="task-card__project">{task.project.key}</span>
+                      <StatusTag value={task.priority} />
+                    </span>
                   </button>
                 ))}
               </Card>

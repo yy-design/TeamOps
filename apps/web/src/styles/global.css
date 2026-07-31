@@ -140,9 +140,40 @@ body {
   border-color: #93c5fd;
 }
 
-.task-card span {
+.task-card strong {
+  display: -webkit-box;
+  overflow: hidden;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  line-clamp: 2;
+  -webkit-line-clamp: 2;
+}
+
+.task-card__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.task-card__project {
+  overflow: hidden;
   color: #64748b;
   font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-card__meta .status-pill {
+  flex: 0 0 auto;
+}
+
+@media (min-width: 1200px) {
+  .board-column--wide .ant-card-body {
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    align-content: start;
+  }
 }
 
 .login-page {

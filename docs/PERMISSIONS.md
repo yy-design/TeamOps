@@ -21,7 +21,7 @@ TeamOps 使用三层权限控制：
   ↓
 requireAuth 验证 token，并从数据库刷新用户状态与角色
   ↓
-requireRole 检查角色能力
+需要角色门槛的接口通过 requireRole 检查角色能力
   ↓
 路由根据 ownerId / assigneeId 限制数据范围
   ↓
@@ -40,9 +40,9 @@ export type UserRole = 'ADMIN' | 'MANAGER' | 'MEMBER';
 |---|---|---|---|
 | 查看工作台 | 全部数据 | 自己的数据 | 自己的数据 |
 | 查看项目 | 全部项目 | 自己负责的项目 | 自己负责的项目 |
-| 新建项目 | 可以，可指定负责人 | 可以，负责人强制为自己 | 不可以 |
-| 编辑项目 | 任意项目 | 自己负责的项目 | 不可以 |
-| 删除项目 | 任意项目 | 自己负责且不含他人任务的项目 | 不可以 |
+| 新建项目 | 可以，可指定负责人 | 可以，负责人强制为自己 | 可以，负责人强制为自己 |
+| 编辑项目 | 任意项目 | 自己负责的项目 | 自己负责的项目 |
+| 删除项目 | 任意项目 | 自己负责且不含他人任务的项目 | 自己负责且不含他人任务的项目 |
 | 查看任务 | 全部任务 | 负责人为自己的任务 | 负责人为自己的任务 |
 | 新建任务 | 可以，可指定负责人 | 只能在自己的项目中创建并分配给自己 | 只能在自己的项目中创建并分配给自己 |
 | 修改/删除/流转任务 | 任意任务 | 负责人为自己的任务 | 负责人为自己的任务 |
@@ -181,12 +181,11 @@ usersRouter.get(
 projectsRouter.post(
   '/',
   requireAuth,
-  requireRole('MANAGER'),
   async (req, res) => { /* ... */ }
 );
 ```
 
-`requireAuth` 必须在 `requireRole` 前面，因为角色判断依赖 `req.user`。
+`requireAuth` 必须在 `requireRole` 前面，因为角色判断依赖 `req.user`。项目管理不再设置角色门槛：所有登录用户都能创建项目并管理自己负责的项目；用户管理等全局能力仍由 `requireRole('ADMIN')` 限制。
 
 ## 5. 数据范围与资源归属
 
@@ -232,7 +231,7 @@ projectsRouter.get('/', requireAuth, async (req, res) => {
 
 ### 5.2 创建项目时防止伪造负责人
 
-前端提交的 `ownerId` 不可信。管理员可以指定负责人，经理提交的负责人则被服务端强制覆盖为本人。
+前端提交的 `ownerId` 不可信。管理员可以指定负责人，非管理员提交的负责人则被服务端强制覆盖为本人。
 
 ```ts
 const isAdmin = hasGlobalDataAccess(req.user!.role);
@@ -249,7 +248,7 @@ const project = await prisma.project.create({
 });
 ```
 
-即使经理修改浏览器请求，将 `ownerId` 改成别人，也不会生效。
+即使非管理员修改浏览器请求，将 `ownerId` 改成别人，也不会生效。
 
 ### 5.3 修改项目时防止 IDOR
 
@@ -276,7 +275,7 @@ if (!existing) {
 
 ### 5.4 删除项目的级联保护
 
-数据库中项目删除会级联删除任务，因此经理删除自己的项目时，还要检查其中是否存在分配给其他人的任务。
+数据库中项目删除会级联删除任务，因此非管理员删除自己的项目时，还要检查其中是否存在分配给其他人的任务。
 
 ```ts
 const project = await prisma.project.findFirst({
@@ -299,7 +298,7 @@ if (!isAdmin && project.tasks.some(
 }
 ```
 
-这避免经理通过删除项目，间接删除其他成员负责的任务。
+这避免非管理员通过删除项目，间接删除其他成员负责的任务。
 
 ## 6. 任务权限实现
 
@@ -604,24 +603,14 @@ const menuItems = [
 ];
 ```
 
-项目按钮：
+项目和任务列表已经由服务端按 `ownerId` / `assigneeId` 完成数据隔离，因此页面对接口实际返回的每一行直接展示编辑、删除、状态流转和评论入口，不再重复添加行级角色判断：
 
-```ts
-const canCreate = isAdmin || isManager;
-
-const canEdit = (project: ProjectDto) => Boolean(
-  isAdmin ||
-  (isManager && project.owner.id === user?.id)
-);
+```tsx
+<Button onClick={() => openEditor(row)}>编辑</Button>
+<Button danger onClick={() => deleteMutation.mutate(row.id)}>删除</Button>
 ```
 
-任务按钮：
-
-```ts
-const canOperateTask = (task: TaskDto) => Boolean(
-  isAdmin || task.assignee.id === user?.id
-);
-```
+这只是简化前端交互，不能代替后端校验。所有写接口仍必须重新验证资源归属，防止用户绕过页面直接调用 API。
 
 只有管理员才加载全员列表并显示负责人筛选或分配控件：
 
@@ -666,7 +655,7 @@ curl -X DELETE \
 |---|---|---|
 | `400` | 请求参数或业务条件错误 | 删除当前登录账号 |
 | `401` | 未登录、Token 无效、用户已禁用 | 没有 Authorization Header |
-| `403` | 已登录但角色或业务权限不足 | MEMBER 创建项目 |
+| `403` | 已登录但角色或业务权限不足 | 非管理员访问用户管理 |
 | `404` | 资源不存在或不属于当前用户 | 修改别人的任务 |
 | `409` | 当前资源状态存在冲突 | 删除仍有业务关联的用户 |
 
@@ -694,12 +683,12 @@ MEMBER token
   → 只返回自己的任务
 ```
 
-### 经理编辑项目
+### 非管理员编辑项目
 
 ```text
-MANAGER token
+MANAGER / MEMBER token
   → requireAuth 通过
-  → requireRole('MANAGER') 通过
+  → 不设置项目角色门槛
   → 查询条件 id + ownerId=req.user.id
   → 是自己的项目：允许修改
   → 不是自己的项目：返回 404
@@ -739,7 +728,7 @@ describe('role permissions', () => {
 1. ADMIN 项目和任务列表返回全量。
 2. MANAGER/MEMBER 列表只返回自己的资源。
 3. 非管理员传入他人 `assigneeId` 不能绕过权限。
-4. 经理不能编辑其他经理的项目。
+4. 非管理员不能编辑其他用户负责的项目。
 5. 普通成员不能修改、删除或评论他人的任务。
 6. 非管理员不能访问用户管理接口。
 7. 禁用用户的旧 Token 立即失效。

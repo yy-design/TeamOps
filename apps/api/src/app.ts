@@ -12,11 +12,31 @@ import { usersRouter } from './routes/users.js';
 import { notificationsRouter } from './routes/notifications.js';
 import { swaggerDocument } from './swagger.js';
 
+const configuredWebOrigins = (process.env.WEB_ORIGIN ?? 'http://localhost:5173')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+function isAllowedOrigin(origin: string | undefined) {
+  if (!origin || configuredWebOrigins.includes(origin)) {
+    return true;
+  }
+
+  return (
+    process.env.NODE_ENV !== 'production' &&
+    /^https?:\/\/(?:localhost|127\.0\.0\.1):\d+$/.test(origin)
+  );
+}
+
 export function createApp() {
   const app = express();
 
   app.use(helmet());
-  app.use(cors({ origin: process.env.WEB_ORIGIN ?? 'http://localhost:5173' }));
+  app.use(
+    cors({
+      origin: (origin, callback) => callback(null, isAllowedOrigin(origin))
+    })
+  );
   app.use(express.json());
   app.use(morgan('dev'));
 
