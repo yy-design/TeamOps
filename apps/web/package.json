@@ -11,16 +11,20 @@
     "lint": "tsc -b --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/react": "3.0.178",
     "@ant-design/charts": "^2.2.7",
     "@ant-design/icons": "^5.5.2",
     "@tanstack/react-query": "^5.62.8",
     "@teamops/shared": "file:../../packages/shared",
+    "ai": "6.0.176",
     "antd": "^5.22.5",
     "axios": "^1.7.9",
     "dayjs": "^1.11.13",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-markdown": "10.1.0",
     "react-router-dom": "^7.1.1",
+    "remark-gfm": "4.0.1",
     "zustand": "^5.0.2"
   },
   "devDependencies": {

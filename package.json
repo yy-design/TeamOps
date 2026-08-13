@@ -9,11 +9,14 @@
   ],
   "scripts": {
     "dev": "concurrently -n api,web -c blue,green \"npm run dev -w @teamops/api\" \"npm run dev -w @teamops/web\"",
-    "build": "npm run build -ws --if-present",
-    "test": "npm run test -ws --if-present",
-    "lint": "npm run lint -ws --if-present",
-    "db:push": "npm run db:push -w @teamops/api",
+    "build": "npm run build -w @teamops/shared && npm run build -w @teamops/api && npm run build -w @teamops/web",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run build -w @teamops/shared && npm run lint -w @teamops/api && npm run lint -w @teamops/web",
+    "db:migrate": "npm run db:migrate -w @teamops/api",
+    "db:migrate:dev": "npm run db:migrate:dev -w @teamops/api",
+    "db:reset": "npm run db:reset -w @teamops/api",
     "db:seed": "npm run db:seed -w @teamops/api",
+    "db:studio": "npm run db:studio -w @teamops/api",
     "prisma:generate": "npm run prisma:generate -w @teamops/api"
   },
   "devDependencies": {

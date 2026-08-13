@@ -9,9 +9,16 @@ export const dashboardRouter = Router();
 
 dashboardRouter.get('/', requireAuth, async (req, res) => {
   const isAdmin = req.user!.role === 'ADMIN';
+  const isManager = req.user!.role === 'MANAGER';
+  const projectScope = isAdmin ? undefined : { members: { some: { userId: req.user!.id } } };
+  const taskScope = isAdmin
+    ? undefined
+    : isManager
+      ? { OR: [{ project: { ownerId: req.user!.id } }, { assigneeId: req.user!.id }] }
+      : { assigneeId: req.user!.id };
   const [projects, tasks, users, activities] = await Promise.all([
-    prisma.project.findMany({ where: isAdmin ? undefined : { ownerId: req.user!.id } }),
-    prisma.task.findMany({ where: isAdmin ? undefined : { assigneeId: req.user!.id }, include: { assignee: true } }),
+    prisma.project.findMany({ where: projectScope }),
+    prisma.task.findMany({ where: taskScope, include: { assignee: true } }),
     isAdmin
       ? prisma.user.findMany({ where: { active: true } })
       : prisma.user.findMany({ where: { id: req.user!.id, active: true } }),

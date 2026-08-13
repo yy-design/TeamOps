@@ -76,6 +76,7 @@ usersRouter.delete('/:id', requireAuth, requireRole('ADMIN'), async (req, res) =
       _count: {
         select: {
           ownedProjects: true,
+          projectMembers: true,
           assignedTasks: true,
           reportedTasks: true,
           comments: true
@@ -90,6 +91,7 @@ usersRouter.delete('/:id', requireAuth, requireRole('ADMIN'), async (req, res) =
 
   const businessRelations = {
     ownedProjects: user._count.ownedProjects,
+    projectMembers: user._count.projectMembers,
     assignedTasks: user._count.assignedTasks,
     reportedTasks: user._count.reportedTasks,
     comments: user._count.comments
@@ -98,6 +100,7 @@ usersRouter.delete('/:id', requireAuth, requireRole('ADMIN'), async (req, res) =
   if (hasBusinessData) {
     const relationLabels = [
       businessRelations.ownedProjects ? `${businessRelations.ownedProjects} 个负责项目` : null,
+      businessRelations.projectMembers ? `${businessRelations.projectMembers} 个项目成员关系` : null,
       businessRelations.assignedTasks ? `${businessRelations.assignedTasks} 个负责任务` : null,
       businessRelations.reportedTasks ? `${businessRelations.reportedTasks} 个创建任务` : null,
       businessRelations.comments ? `${businessRelations.comments} 条评论` : null

@@ -1,5 +1,5 @@
 import { Tag } from 'antd';
-import type { ProjectStatus, TaskPriority, TaskStatus, UserRole } from '@teamops/shared';
+import type { ProjectStatus, SprintStatus, TaskPriority, TaskStatus, UserRole } from '@teamops/shared';
 
 const meta: Record<string, { color: string; label: string }> = {
   ADMIN: { color: 'blue', label: '管理员' },
@@ -9,6 +9,7 @@ const meta: Record<string, { color: string; label: string }> = {
   ACTIVE: { color: 'processing', label: '进行中' },
   AT_RISK: { color: 'warning', label: '有风险' },
   DONE: { color: 'success', label: '已完成' },
+  COMPLETED: { color: 'success', label: '已结束' },
   BACKLOG: { color: 'default', label: '待处理' },
   IN_PROGRESS: { color: 'processing', label: '进行中' },
   REVIEW: { color: 'purple', label: '待审核' },
@@ -19,7 +20,7 @@ const meta: Record<string, { color: string; label: string }> = {
   URGENT: { color: 'red', label: '紧急' }
 };
 
-export function StatusTag({ value }: { value: ProjectStatus | TaskStatus | TaskPriority | UserRole }) {
+export function StatusTag({ value }: { value: ProjectStatus | SprintStatus | TaskStatus | TaskPriority | UserRole }) {
   const item = meta[value] ?? { color: 'default', label: value };
   return <Tag className="status-pill" color={item.color}>{item.label}</Tag>;
 }

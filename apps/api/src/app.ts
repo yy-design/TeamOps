@@ -7,9 +7,11 @@ import swaggerUi from 'swagger-ui-express';
 import { authRouter } from './routes/auth.js';
 import { dashboardRouter } from './routes/dashboard.js';
 import { projectsRouter } from './routes/projects.js';
+import { sprintsRouter } from './routes/sprints.js';
 import { tasksRouter } from './routes/tasks.js';
 import { usersRouter } from './routes/users.js';
 import { notificationsRouter } from './routes/notifications.js';
+import { agentRouter } from './routes/agent.js';
 import { swaggerDocument } from './swagger.js';
 
 const configuredWebOrigins = (process.env.WEB_ORIGIN ?? 'http://localhost:5173')
@@ -45,9 +47,11 @@ export function createApp() {
   app.use('/api/auth', authRouter);
   app.use('/api/dashboard', dashboardRouter);
   app.use('/api/projects', projectsRouter);
+  app.use('/api/sprints', sprintsRouter);
   app.use('/api/tasks', tasksRouter);
   app.use('/api/users', usersRouter);
   app.use('/api/notifications', notificationsRouter);
+  app.use('/api/agent', agentRouter);
 
   app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     console.error(err);

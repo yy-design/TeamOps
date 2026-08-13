@@ -1,5 +1,7 @@
 import { createApp } from './app.js';
+import { validateRuntimeConfig } from './lib/config.js';
 
+validateRuntimeConfig();
 const port = Number(process.env.PORT ?? 4000);
 
 createApp().listen(port, () => {

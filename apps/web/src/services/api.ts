@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { AuthResponse, DashboardDto, NotificationDto, ProjectDto, ProjectStatus, TaskDto, TaskPriority, TaskStatus, UserDto, UserRole } from '@teamops/shared';
+import type { AgentConversationDto, AgentMessageDto, AgentRunDto, AuthResponse, DashboardDto, NotificationDto, ProjectDto, ProjectStatus, RegisterPayload, RegisterResponse, SprintDto, SprintStatus, TaskDto, TaskPriority, TaskStatus, UserDto, UserRole } from '@teamops/shared';
 import { useAuthStore } from '../store/authStore';
 
 export const api = axios.create({
@@ -24,9 +24,65 @@ api.interceptors.response.use(
   }
 );
 
+export function subscribeToNotificationEvents(onChange: () => void) {
+  let disposed = false;
+  let controller: AbortController | undefined;
+  let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+
+  async function connect() {
+    const token = useAuthStore.getState().token;
+    if (disposed || !token) return;
+
+    controller = new AbortController();
+    try {
+      const response = await fetch(`${String(api.defaults.baseURL ?? '/api')}/notifications/stream`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'text/event-stream' },
+        signal: controller.signal
+      });
+      if (response.status === 401) {
+        disposed = true;
+        useAuthStore.getState().clearSession();
+        return;
+      }
+      if (!response.ok || !response.body) throw new Error('Notification stream unavailable');
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (!disposed) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const frames = buffer.split('\n\n');
+        buffer = frames.pop() ?? '';
+        frames.forEach((frame) => {
+          if (frame.includes('event: notifications.changed')) onChange();
+        });
+      }
+    } catch (error) {
+      if (!disposed && !(error instanceof DOMException && error.name === 'AbortError')) {
+        console.warn('Notification stream disconnected; retrying.', error);
+      }
+    } finally {
+      if (!disposed) reconnectTimer = setTimeout(connect, 3_000);
+    }
+  }
+
+  void connect();
+  return () => {
+    disposed = true;
+    controller?.abort();
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+  };
+}
+
 export const authApi = {
   async login(email: string, password: string) {
     const { data } = await api.post<AuthResponse>('/auth/login', { email, password });
+    return data;
+  },
+  async register(payload: RegisterPayload) {
+    const { data } = await api.post<RegisterResponse>('/auth/register', payload);
     return data;
   },
   async me() {
@@ -54,9 +110,10 @@ export interface ProjectPayload {
   key: string;
   description: string;
   status: ProjectStatus;
-  progress: number;
   dueDate: string;
   ownerId: string;
+  memberIds?: string[];
+  viewerIds?: string[];
 }
 
 export interface TaskFilters {
@@ -73,8 +130,52 @@ export interface TaskPayload {
   priority: TaskPriority;
   dueDate: string;
   projectId: string;
+  sprintId?: string | null;
   assigneeId: string;
 }
+
+export interface SprintPayload {
+  name: string;
+  goal: string;
+  projectId: string;
+  startDate: string;
+  endDate: string;
+  wipLimit: number;
+}
+
+export const agentApi = {
+  async conversations() {
+    const { data } = await api.get<AgentConversationDto[]>('/agent/conversations');
+    return data;
+  },
+  async createConversation() {
+    const { data } = await api.post<AgentConversationDto>('/agent/conversations');
+    return data;
+  },
+  async renameConversation(id: string, title: string) {
+    const { data } = await api.patch<AgentConversationDto>(`/agent/conversations/${id}`, { title });
+    return data;
+  },
+  async deleteConversation(id: string) {
+    await api.delete(`/agent/conversations/${id}`);
+  },
+  async messages(id: string) {
+    const { data } = await api.get<AgentMessageDto[]>(`/agent/conversations/${id}/messages`);
+    return data;
+  },
+  async runs(conversationId: string) {
+    const { data } = await api.get<AgentRunDto[]>(`/agent/conversations/${conversationId}/runs`);
+    return data;
+  },
+  async approve(approvalId: string, expectedVersion: number) {
+    const { data } = await api.post<AgentRunDto>(`/agent/approvals/${approvalId}/approve`, { expectedVersion });
+    return data;
+  },
+  async reject(approvalId: string, expectedVersion: number, reason?: string) {
+    const { data } = await api.post<AgentRunDto>(`/agent/approvals/${approvalId}/reject`, { expectedVersion, reason });
+    return data;
+  }
+};
 
 export const teamOpsApi = {
   async dashboard() {
@@ -83,6 +184,10 @@ export const teamOpsApi = {
   },
   async projects() {
     const { data } = await api.get<ProjectDto[]>('/projects');
+    return data;
+  },
+  async projectMemberCandidates() {
+    const { data } = await api.get<UserDto[]>('/projects/member-candidates');
     return data;
   },
   async createProject(payload: ProjectPayload) {
@@ -95,6 +200,33 @@ export const teamOpsApi = {
   },
   async deleteProject(id: string) {
     await api.delete(`/projects/${id}`);
+  },
+  async sprints() {
+    const { data } = await api.get<SprintDto[]>('/sprints');
+    return data;
+  },
+  async createSprint(payload: SprintPayload) {
+    const { data } = await api.post<SprintDto>('/sprints', payload);
+    return data;
+  },
+  async updateSprint(id: string, payload: Partial<Omit<SprintPayload, 'projectId'>>) {
+    const { data } = await api.patch<SprintDto>(`/sprints/${id}`, payload);
+    return data;
+  },
+  async updateSprintStatus(
+    id: string,
+    status: Exclude<SprintStatus, 'PLANNING'>,
+    options?: { moveIncompleteToBacklog?: boolean }
+  ) {
+    const payload = {
+      status,
+      ...(options?.moveIncompleteToBacklog ? { incompleteTaskAction: 'MOVE_TO_BACKLOG' as const } : {})
+    };
+    const { data } = await api.patch<SprintDto>(`/sprints/${id}/status`, payload);
+    return data;
+  },
+  async deleteSprint(id: string) {
+    await api.delete(`/sprints/${id}`);
   },
   async tasks(filters: TaskFilters = {}) {
     const { data } = await api.get<TaskDto[]>('/tasks', { params: filters });

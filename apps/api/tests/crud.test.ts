@@ -87,13 +87,30 @@ describe('fullstack CRUD APIs', () => {
       .send({ status: 'ACTIVE', progress: 35 });
 
     expect(updated.status).toBe(200);
-    expect(updated.body.progress).toBe(35);
+    expect(updated.body.status).toBe('ACTIVE');
 
     const deleted = await request(app).delete(`/api/projects/${created.body.id}`).set('Authorization', `Bearer ${managerToken}`);
     expect(deleted.status).toBe(204);
   });
 
-  it('lets authenticated users edit tasks and add comments', async () => {
+  it('lets project members process tasks while owners control metadata and approval', async () => {
+    const project = await request(app)
+      .post('/api/projects')
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({
+        name: 'Release Workflow',
+        key: `R${unique}`,
+        description: 'Validate project membership, assignment, review, and approval rules.',
+        status: 'ACTIVE',
+        progress: 0,
+        dueDate: '2026-10-01T10:00:00.000Z',
+        ownerId: managerId,
+        memberIds: [memberId]
+      });
+
+    expect(project.status).toBe(201);
+    expect(project.body.members.some((item: { user: { id: string } }) => item.user.id === memberId)).toBe(true);
+
     const created = await request(app)
       .post('/api/tasks')
       .set('Authorization', `Bearer ${managerToken}`)
@@ -103,25 +120,47 @@ describe('fullstack CRUD APIs', () => {
         status: 'BACKLOG',
         priority: 'HIGH',
         dueDate: '2026-07-30T10:00:00.000Z',
-        projectId,
+        projectId: project.body.id,
         assigneeId: memberId
       });
 
     expect(created.status).toBe(201);
+    expect(created.body.assignee.id).toBe(memberId);
 
-    const updated = await request(app)
+    const started = await request(app)
+      .patch(`/api/tasks/${created.body.id}/status`)
+      .set('Authorization', `Bearer ${memberToken}`)
+      .send({ status: 'IN_PROGRESS' });
+    expect(started.status).toBe(200);
+
+    const forbiddenMetadataUpdate = await request(app)
       .patch(`/api/tasks/${created.body.id}`)
       .set('Authorization', `Bearer ${memberToken}`)
-      .send({ status: 'IN_PROGRESS', priority: 'URGENT' });
+      .send({ priority: 'URGENT' });
+    expect(forbiddenMetadataUpdate.status).toBe(403);
 
-    expect(updated.status).toBe(200);
-    expect(updated.body.status).toBe('IN_PROGRESS');
+    const review = await request(app)
+      .patch(`/api/tasks/${created.body.id}/status`)
+      .set('Authorization', `Bearer ${memberToken}`)
+      .send({ status: 'REVIEW' });
+    expect(review.status).toBe(200);
+
+    const forbiddenApproval = await request(app)
+      .patch(`/api/tasks/${created.body.id}/status`)
+      .set('Authorization', `Bearer ${memberToken}`)
+      .send({ status: 'DONE' });
+    expect(forbiddenApproval.status).toBe(403);
+
+    const approved = await request(app)
+      .patch(`/api/tasks/${created.body.id}/status`)
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({ status: 'DONE' });
+    expect(approved.status).toBe(200);
 
     const commented = await request(app)
       .post(`/api/tasks/${created.body.id}/comments`)
       .set('Authorization', `Bearer ${memberToken}`)
       .send({ body: 'Checklist draft is ready for review.' });
-
     expect(commented.status).toBe(201);
     expect(commented.body.comments[0].body).toBe('Checklist draft is ready for review.');
   });

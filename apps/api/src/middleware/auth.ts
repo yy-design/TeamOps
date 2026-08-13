@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import type { UserRole } from '@teamops/shared';
+import { getJwtSecret } from '../lib/config.js';
 import { prisma } from '../lib/prisma.js';
 import { canAccess } from '../lib/permissions.js';
 
@@ -17,7 +18,7 @@ declare module 'express-serve-static-core' {
 }
 
 export function signToken(user: AuthUser) {
-  return jwt.sign(user, process.env.JWT_SECRET ?? 'teamops-local-secret-change-me', { expiresIn: '8h' });
+  return jwt.sign(user, getJwtSecret(), { expiresIn: '8h' });
 }
 
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
@@ -30,7 +31,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
 
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET ?? 'teamops-local-secret-change-me') as AuthUser;
+    const payload = jwt.verify(token, getJwtSecret()) as AuthUser;
     const user = await prisma.user.findUnique({ where: { id: payload.id } });
 
     if (!user || !user.active) {

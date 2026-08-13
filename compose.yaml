@@ -1,0 +1,53 @@
+services:
+  db:
+    image: postgres:16.6-alpine
+    environment:
+      POSTGRES_DB: teamops
+      POSTGRES_USER: teamops
+      POSTGRES_PASSWORD: teamops
+    ports:
+      - "5432:5432"
+    volumes:
+      - teamops-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U teamops -d teamops"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://teamops:teamops@db:5432/teamops?schema=public
+      JWT_SECRET: ${JWT_SECRET:-teamops-local-secret-change-me}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      PORT: 4000
+      WEB_ORIGIN: http://localhost:8080
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_BASE_URL: /api
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+
+volumes:
+  teamops-postgres:

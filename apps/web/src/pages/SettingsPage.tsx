@@ -1,51 +1,16 @@
-import { App, Button, Card, Col, Form, Input, Radio, Row, Segmented, Space, Switch } from 'antd';
-import { useMutation } from '@tanstack/react-query';
+import { Card, Col, Form, Radio, Row, Segmented, Space, Switch } from 'antd';
 import { PageHeader } from '../components/PageHeader';
-import { authApi } from '../services/api';
-import { useAuthStore } from '../store/authStore';
 import { ThemeMode, usePreferencesStore } from '../store/preferencesStore';
 
 const colors = ['#2563eb', '#0f766e', '#7c3aed', '#dc2626', '#ea580c'];
 
 export function SettingsPage() {
-  const { message } = App.useApp();
-  const user = useAuthStore((state) => state.user);
-  const setSession = useAuthStore((state) => state.setSession);
-  const token = useAuthStore((state) => state.token);
   const preferences = usePreferencesStore();
-  const mutation = useMutation({
-    mutationFn: authApi.updateProfile,
-    onSuccess: (updated) => {
-      if (token) setSession(token, updated);
-      message.success('个人资料已保存');
-    }
-  });
 
   return (
     <div className="page-stack">
-      <PageHeader title="系统设置" subtitle="展示主题、个人资料和团队工作偏好的配置入口。" />
+      <PageHeader title="系统设置" subtitle="配置主题、主色和工作台显示偏好。个人资料请在右上角个人中心维护。" />
       <Row gutter={[16, 16]}>
-        <Col xs={24} xl={12}>
-          <Card title="个人资料">
-            <Form layout="vertical" initialValues={user ?? undefined} onFinish={(values) => mutation.mutate(values)}>
-              <Form.Item label="姓名" name="name" rules={[{ required: true, min: 2 }]}><Input /></Form.Item>
-              <Form.Item label="邮箱" name="email"><Input disabled /></Form.Item>
-              <Form.Item label="职位" name="title" rules={[{ required: true, min: 2 }]}><Input /></Form.Item>
-              <Form.Item label="头像色" name="avatarColor" rules={[{ required: true }]}>
-                <Radio.Group>
-                  <Space wrap>
-                    {colors.map((color) => (
-                      <Radio.Button value={color} key={color}>
-                        <span className="color-dot" style={{ background: color }} />
-                      </Radio.Button>
-                    ))}
-                  </Space>
-                </Radio.Group>
-              </Form.Item>
-              <Button type="primary" htmlType="submit" loading={mutation.isPending}>保存个人资料</Button>
-            </Form>
-          </Card>
-        </Col>
         <Col xs={24} xl={12}>
           <Card title="界面偏好">
             <Form layout="vertical">

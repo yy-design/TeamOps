@@ -6,8 +6,15 @@ const passwordHash = await bcrypt.hash('TeamOps123!', 10);
 
 async function main() {
   await prisma.notification.deleteMany();
+  await prisma.toolApproval.deleteMany();
+  await prisma.agentStep.deleteMany();
+  await prisma.agentRun.deleteMany();
+  await prisma.agentMessage.deleteMany();
+  await prisma.agentConversation.deleteMany();
   await prisma.comment.deleteMany();
   await prisma.task.deleteMany();
+  await prisma.sprint.deleteMany();
+  await prisma.projectMember.deleteMany();
   await prisma.project.deleteMany();
   await prisma.activityLog.deleteMany();
   await prisma.user.deleteMany();
@@ -91,6 +98,41 @@ async function main() {
     }
   });
 
+  await prisma.projectMember.createMany({
+    data: [
+      { projectId: portal.id, userId: manager.id, role: 'OWNER' },
+      { projectId: portal.id, userId: member.id, role: 'MEMBER' },
+      { projectId: portal.id, userId: designer.id, role: 'VIEWER' },
+      { projectId: api.id, userId: admin.id, role: 'OWNER' },
+      { projectId: api.id, userId: manager.id, role: 'MEMBER' },
+      { projectId: design.id, userId: manager.id, role: 'OWNER' },
+      { projectId: design.id, userId: designer.id, role: 'MEMBER' }
+    ]
+  });
+
+  const portalSprint = await prisma.sprint.create({
+    data: {
+      name: 'Portal Sprint 08',
+      goal: 'Deliver the role-aware navigation and responsive project workspace.',
+      status: 'ACTIVE',
+      startDate: new Date('2026-08-03T00:00:00.000Z'),
+      endDate: new Date('2026-08-16T23:59:59.000Z'),
+      wipLimit: 4,
+      projectId: portal.id
+    }
+  });
+  const apiSprint = await prisma.sprint.create({
+    data: {
+      name: 'Reliability Sprint 07',
+      goal: 'Close authentication and observability gaps before release.',
+      status: 'ACTIVE',
+      startDate: new Date('2026-07-13T00:00:00.000Z'),
+      endDate: new Date('2026-07-26T23:59:59.000Z'),
+      wipLimit: 3,
+      projectId: api.id
+    }
+  });
+
   const taskA = await prisma.task.create({
     data: {
       title: 'Implement RBAC-aware navigation shell',
@@ -99,6 +141,7 @@ async function main() {
       priority: 'HIGH',
       dueDate: new Date('2026-07-08T10:00:00.000Z'),
       projectId: portal.id,
+      sprintId: portalSprint.id,
       assigneeId: member.id,
       reporterId: manager.id
     }
@@ -112,6 +155,7 @@ async function main() {
       priority: 'URGENT',
       dueDate: new Date('2026-07-05T10:00:00.000Z'),
       projectId: api.id,
+      sprintId: apiSprint.id,
       assigneeId: admin.id,
       reporterId: manager.id
     }
